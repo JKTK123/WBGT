@@ -1,12 +1,12 @@
-# wbgt_bot.py
 import os
 import datetime
 import requests
 from collections import defaultdict
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+from flask import Flask
 
-# --- WBGT functions ---
+# --- WBGT functions (same as before) ---
 def fetch_wbgt(date_input):
     url = "https://api-open.data.gov.sg/v2/real-time/api/weather"
     params = {"api": "wbgt", "date": date_input}
@@ -45,7 +45,7 @@ def format_wbgt_by_station_split(data):
     return messages
 
 # --- Telegram bot handlers ---
-BOT_TOKEN = os.environ.get("BOT_TOKEN")  # Use Render environment variable
+BOT_TOKEN = os.environ.get("BOT_TOKEN")  # From Render environment variables
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -55,8 +55,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     date_input = update.message.text.strip()
-
-    # Validate date
     try:
         if "T" in date_input:
             datetime.datetime.fromisoformat(date_input)
@@ -76,15 +74,25 @@ async def handle_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"Error fetching WBGT data: {e}")
 
-# --- Main function ---
-def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+# --- Run Telegram bot ---
+from threading import Thread
 
+def run_bot():
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_date))
-
     print("Bot is running...")
     app.run_polling()
 
+Thread(target=run_bot).start()
+
+# --- Dummy Flask server to satisfy Render ---
+flask_app = Flask("WBGT Telegram Bot")
+
+@flask_app.route("/")
+def home():
+    return "WBGT Telegram Bot is running!"
+
 if __name__ == "__main__":
-    main()
+    port = int(os.environ.get("PORT", 10000))  # Render sets $PORT automatically
+    flask_app.run(host="0.0.0.0", port=port)
