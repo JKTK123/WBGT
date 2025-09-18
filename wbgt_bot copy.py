@@ -1,24 +1,25 @@
+# wbgt_bot.py
 import os
 import datetime
 import requests
 from collections import defaultdict
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
-from flask import Flask
-import threading
 
 # --- WBGT functions ---
 def fetch_wbgt(date_input):
     url = "https://api-open.data.gov.sg/v2/real-time/api/weather"
     params = {"api": "wbgt", "date": date_input}
     response = requests.get(url, params=params)
-    response.raise_for_status()
+    if response.status_code != 200:
+        raise RuntimeError(f"Error fetching data: HTTP {response.status_code}")
     return response.json()
 
 def format_wbgt_by_station_split(data):
     records = data.get("data", {}).get("records", [])
     if not records:
         return ["No records found."]
+
     station_data = defaultdict(list)
     for record in records:
         dt = record.get("datetime")
@@ -29,6 +30,7 @@ def format_wbgt_by_station_split(data):
             wbgt = rd.get("wbgt")
             heat_stress = rd.get("heatStress")
             station_data[town].append((dt, wbgt, heat_stress))
+
     messages = []
     for station in sorted(station_data.keys()):
         lines = [f"Station: {station}"]
@@ -39,12 +41,11 @@ def format_wbgt_by_station_split(data):
         for dt, wbgt, heat_stress in readings_sorted:
             lines.append(f"  {dt}  WBGT: {wbgt}  HeatStress: {heat_stress}")
         messages.append("\n".join(lines))
+
     return messages
 
 # --- Telegram bot handlers ---
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN environment variable not set!")
+BOT_TOKEN = os.environ.get("BOT_TOKEN")  # Use Render environment variable
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -54,6 +55,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     date_input = update.message.text.strip()
+
+    # Validate date
     try:
         if "T" in date_input:
             datetime.datetime.fromisoformat(date_input)
@@ -73,20 +76,15 @@ async def handle_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"Error fetching WBGT data: {e}")
 
-# --- Minimal Flask server in background thread ---
-def run_flask():
-    flask_app = Flask("WBGT Telegram Bot")
-    @flask_app.route("/")
-    def home():
-        return "WBGT Telegram Bot is running!"
-    port = int(os.environ.get("PORT", 10000))
-    flask_app.run(host="0.0.0.0", port=port)
+# --- Main function ---
+def main():
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-threading.Thread(target=run_flask, daemon=True).start()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_date))
 
-# --- Run Telegram bot in main thread ---
-app = ApplicationBuilder().token(BOT_TOKEN).build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_date))
-print("Telegram bot is running...")
-app.run_polling()
+    print("Bot is running...")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
