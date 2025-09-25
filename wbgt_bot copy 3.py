@@ -36,17 +36,8 @@ def format_station_data(station, readings):
         readings,
         key=lambda x: datetime.datetime.fromisoformat(x[0].replace("Z", "+00:00"))
     )
-    for dt_str, wbgt, heat_stress in readings_sorted:
-        # Parse the datetime string
-        dt = datetime.datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
-
-        # Format date and time
-        date_str = dt.strftime("%d %b %Y")   # e.g. 20 Sep 2025
-        time_str = dt.strftime("%H%M")       # e.g. 1215
-
-        # Add to output
-        lines.append(f" Date: {date_str} Time: {time_str}  WBGT: {wbgt}  HeatStress: {heat_stress}")
-
+    for dt, wbgt, heat_stress in readings_sorted:
+        lines.append(f"  {dt}  WBGT: {wbgt}  HeatStress: {heat_stress}")
     return "\n".join(lines)
 
 # --- Telegram bot handlers ---
@@ -59,21 +50,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Hi! Send me a date (YYYY-MM-DD) or datetime (YYYY-MM-DDTHH:MM:SS), "
         "and I'll show you WBGT data by station."
     )
-
-async def instructions(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message = (
-        "📋 *How to use the WBGT Bot:*\n\n"
-        "Send a message in the format `YYYY-MM-DDTHH:MM:SS` to retrieve 6 hours worth of WBGT readings, "
-        "with the last reading taken at the date-time sent. Then, the bot will prompt you to select the desired location.\n\n"
-        "📌 Example:\n"
-        "`2025-09-01T18:00:00`\n"
-        "→ Retrieves 6 hours worth of WBGT data, with the last reading at 1 Sep 2025, 6pm.\n"
-        "→ You will get data from 12pm to 6pm on 1 Sep.\n\n"
-        "Another example:\n"
-        "`2025-06-30T12:00:00`\n"
-        "→ Retrieves WBGT data from 6am to 12pm on 30 Jun 2025."
-    )
-    await update.message.reply_text(message, parse_mode="Markdown")
 
 async def handle_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     date_input = update.message.text.strip()
@@ -140,7 +116,6 @@ threading.Thread(target=run_flask, daemon=True).start()
 # --- Run Telegram bot in main thread ---
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("instructions", instructions))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_date))
 app.add_handler(CallbackQueryHandler(button_handler))
 print("Telegram bot with station selection is running...")
